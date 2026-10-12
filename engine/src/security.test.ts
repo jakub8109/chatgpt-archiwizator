@@ -1,7 +1,7 @@
 // Security tests for the HTML archive and the Markdown files. String.raw keeps every backslash exactly as written.
 import { describe, expect, it } from 'vitest';
 import { renderMarkdown, safeHref } from './html.js';
-import { sanitizeMarkdown } from './markdown.js';
+
 
 const UNC = String.raw`\\evil\share\a.png`;
 
@@ -43,33 +43,41 @@ describe('HTML pages', () => {
   });
 });
 
-describe('Markdown files (VS Code preview, Obsidian)', () => {
-  const RAW_TAG = /<[A-Za-z!/?]/;   // what a viewer would treat as raw HTML or an autolink
+describe('Markdown files (VS Code preview, Obsidian): untrusted text is never interpreted', () => {
+  const ATTACKS = [
+    `<img src="${UNC}"> tekst`,
+    '``x` <img src=x onerror=alert(1)>``',
+    '```js`\n<img src=x onerror=alert(1)>\n```',
+    '````\n````\n<img src=x>',                                     // tries to close our fence
+    '> [r]: ' + UNC + '\n> ![x][r]',                               // reference definition inside a blockquote
+    '- [r]:\n  ' + UNC + '\n\n![x][r]',                            // destination on the next line, inside a list
+    `![x](${UNC})`, '[x](&#92;&#92;evil&#92;a.png)', '[x](<//evil/a.png>)', '![a [b]](//evil/x.png)',
+    '[x](\n' + UNC + ')',                                           // destination after a line break
+  ];
 
-  it('no raw HTML anywhere and no unsafe destinations, whatever the code-span/fence trickery', () => {
-    const cases = [
-      `<img src="${UNC}"> tekst`,
-      '``x` <img src=x onerror=alert(1)>``',                    // double-backtick span my old splitter misread
-      '```js`\n<img src=x onerror=alert(1)>\n```',                // backtick in info string: not a fence for CommonMark
-      '    <img src=x>',                                           // indented code
-      `![x](${UNC})`, '[k](file://evil/x)', `[ref]: ${UNC}`, `[ref2]: <${UNC}>`,
-      '![a [b]](//evil/x.png)', '[x](&#92;&#92;evil&#92;a.png)', '[x](&#x5c;&#x5c;evil)', '[x](<//evil/a.png>)',
-      '![r](https://evil.example/t.png)',
-    ];
-    for (const c of cases) {
-      const md = sanitizeMarkdown(c);
-      expect(md, c).not.toMatch(RAW_TAG);
-      expect(md, c).not.toMatch(/\]\(\s*<?(\\|\/\/|file:|&#|https:\/\/evil)/i);
-      expect(md, c).not.toMatch(/^\s*\[ref2?\]:\s*<?\\\\/m);
+  it('the whole message text sits inside one fence it cannot close', async () => {
+    const { toMarkdown, fenced } = await import('./markdown.js');
+    const { normalizeConversation } = await import('./normalize.js');
+    for (const attack of ATTACKS) {
+      const conv = normalizeConversation({ id: 'c', title: 't', current_node: 'm', mapping: {
+        m: { id: 'm', parent: null, children: [], message: { id: 'm', author: { role: 'user' }, content: { content_type: 'text', parts: [attack] } } } } });
+      const md = toMarkdown(conv, {});
+      const block = fenced(attack.trim());
+      expect(md, attack).toContain(block);
+      // nothing of the attack exists outside that block
+      const outside = md.replace(block, '');
+      expect(outside, attack).not.toMatch(/evil|<img|onerror|&#92;/);
+      // the fence is strictly longer than any backtick run in the text, so CommonMark cannot close it early
+      const fence = block.split('\n')[0].replace('text', '');
+      const longest = Math.max(0, ...[...attack.matchAll(/`+/g)].map((m) => m[0].length));
+      expect(fence.length).toBeGreaterThan(longest);
+      expect(fence.length).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it('keeps normal content and our own markers usable', () => {
-    const md = sanitizeMarkdown(['![ok](attachment:file_1)', '[dobry](https://example.com/a?b=1)', 'if (a < b && c > d) return;',
-      '<details><summary>reasoning</summary>', '</details>'].join('\n'));
-    expect(md).toContain('![ok](attachment:file_1)');
-    expect(md).toContain('[dobry](https://example.com/a?b=1)');
-    expect(md).toContain('if (a < b && c > d) return;');   // "< " is not a tag start: untouched
-    expect(md).toContain('<details><summary>reasoning</summary>');
+  it('untrusted short strings outside the fence (title, file names) are fully escaped', async () => {
+    const { mdEscape } = await import('./markdown.js');
+    const e = mdEscape(`![x](${UNC}) <img src=x> [r]: //evil`);
+    expect(e).not.toMatch(/(^|[^\\])[!\[\]()<>]/);   // every such character is backslash-escaped
   });
 });

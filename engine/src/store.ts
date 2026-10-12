@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { conversationHtml, galleryHtml, IMAGE_EXT, indexHtml, type HtmlIndexItem } from './html.js';
+import { mdEscape } from './markdown.js';
 import type { NormalizedConversation } from './types.js';
 
 /**
@@ -200,7 +201,7 @@ export class Store {
   /** INDEX.md — table of contents for reading the archive (VS Code preview, Obsidian, any Markdown viewer). */
   writeIndexMd(): void {
     const all = Object.values(this.index).sort((a, b) => (b.updateTime ?? 0) - (a.updateTime ?? 0));
-    const esc = (s: string) => s.replace(/[[\]|\\]/g, '\\$&').replace(/\n/g, ' ');
+    const esc = mdEscape;   // titles are untrusted: every Markdown-significant character is escaped
     const link = (p: string) => encodeURI(p).replace(/\(/g, '%28').replace(/\)/g, '%29');
     const lines = [
       '# ChatGPT — archiwum rozmów', '',

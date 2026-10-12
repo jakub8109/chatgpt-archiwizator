@@ -49,13 +49,15 @@ describe('markdown', () => {
     const c = normalizeConversation(conv('c1', 'Wycena: "pompa" ciepła'));
     const md = toMarkdown(c, { 'file-IMG1': 'attachments/file-IMG1_x.png' });
     expect(md).toMatch(/^---\nsource: chatgpt\nconversation_id: "c1"\ntitle: "Wycena: \\"pompa\\" ciepła"/);
-    expect(md).toMatch(/<a id="msg-u"><\/a>\*\*Użytkownik\*\* · \d{2}\.\d{2}\.2025, \d{2}:\d{2}/);
-    expect(md).toContain('<a id="msg-b"></a>**ChatGPT** · ');
+    expect(md).toMatch(/\*\*Użytkownik\*\* · \d{2}\.\d{2}\.2025, \d{2}:\d{2}/);
+    expect(md).toContain('**ChatGPT** · ');
     expect(md.match(/^---$/gm)!.length).toBe(2 + 2);   // front matter + one rule per message
-    expect(md).toContain('![image](attachments/file-IMG1_x.png)');
-    expect(md).toContain('- oferta.pdf _(nie pobrano)_');
+    expect(md).toContain('```text\nKot na parapecie.\n```');   // message text is inert (fenced)
+    expect(md).toContain('(attachments/file-IMG1_x.png)');
+    expect(md).toContain(String.raw`- oferta\.pdf _(nie pobrano)_`);
+    expect(md).toContain('# Wycena' + String.raw`\: \"pompa\" ciepła`);
     const md2 = toMarkdown(c, { 'file-IMG1': 'attachments/file-IMG1_Wklejony tekst(1).png' });
-    expect(md2).toContain('![image](attachments/file-IMG1_Wklejony%20tekst%281%29.png)');
+    expect(md2).toContain('(attachments/file-IMG1_Wklejony%20tekst%281%29.png)');
     expect(md).not.toContain('stara odpowiedź');
   });
 });
@@ -115,8 +117,8 @@ describe('official export import', () => {
     const folder = join(root, 'ChatGPT', e.folder);
     expect(readdirSync(join(folder, 'attachments')).sort()).toEqual(['file-DOC1-oferta.pdf', 'file-IMG1-photo.png']);
     const md = readFileSync(join(folder, 'conversation.md'), 'utf8');
-    expect(md).toContain('![image](attachments/file-IMG1-photo.png)');
-    expect(md).toContain('[oferta.pdf](attachments/file-DOC1-oferta.pdf)');
+    expect(md).toContain('(attachments/file-IMG1-photo.png)');
+    expect(md).toContain(String.raw`[oferta\.pdf](attachments/file-DOC1-oferta.pdf)`);
     expect(JSON.parse(readFileSync(join(folder, 'metadata.json'), 'utf8')).messages).toHaveLength(2);
 
     // same export again: everything skipped
