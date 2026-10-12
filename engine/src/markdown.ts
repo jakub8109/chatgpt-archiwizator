@@ -1,4 +1,39 @@
+import { safeHref } from './html.js';
 import type { NormalizedConversation } from './types.js';
+
+const REASONING = new Set(['<details><summary>reasoning</summary>', '</details>']);   // our own markers (normalize.ts)
+
+/**
+ * Conversation text is untrusted, and Markdown viewers (VS Code preview, Obsidian) render images and raw HTML.
+ * Outside code blocks/spans: raw HTML is escaped, and link/image targets (inline and reference-style) must pass
+ * safeHref; images only from this archive. Our own `attachment:<id>` placeholders are kept for later resolution.
+ */
+export function sanitizeMarkdown(text: string): string {
+  const out: string[] = [];
+  let inFence: string | null = null;
+  for (const line of text.split('\n')) {
+    const fence = /^\s*(```+|~~~+)/.exec(line);
+    if (inFence) { out.push(line); if (fence && line.trim().startsWith(inFence)) inFence = null; continue; }
+    if (fence) { inFence = fence[1]; out.push(line); continue; }
+    if (REASONING.has(line.trim())) { out.push(line); continue; }
+    // reference-style definitions: [id]: target
+    const def = /^(\s*\[[^\]]+\]:\s*)(\S+)(.*)$/.exec(line);
+    if (def) { out.push(safeHref(def[2]) ? line : `${def[1].replace('[', '\\[')}(usunięto niebezpieczny adres)`); continue; }
+    // split off inline code spans so they stay verbatim
+    out.push(line.split(/(`[^`]*`)/).map((seg, i) => (i % 2 ? seg : cleanSegment(seg))).join(''));
+  }
+  return out.join('\n');
+}
+
+function cleanSegment(seg: string): string {
+  seg = seg.replace(/</g, '&lt;');
+  return seg.replace(/(!?)\[([^\]]*)\]\(([^)\s]*)([^)]*)\)/g, (all, bang: string, label: string, target: string) => {
+    if (/^attachment:[A-Za-z0-9_-]+$/.test(target)) return all;                        // ours, resolved below
+    const h = safeHref(target);
+    if (bang) return h && !/^(https?:|mailto:)/i.test(h) ? `![${label}](${h})` : `[obraz: ${label || 'bez opisu'}]`;
+    return h ? `[${label}](${h})` : `${label} (usunięto niebezpieczny link)`;
+  });
+}
 
 /** Link target safe for Markdown: encodeURI keeps ( ) which would end the link early. */
 const linkTo = (p: string) => encodeURI(p).replace(/\(/g, '%28').replace(/\)/g, '%29');
@@ -43,7 +78,7 @@ export function toMarkdown(conv: NormalizedConversation, savedFiles: Record<stri
     const meta = [local, m.model].filter(Boolean).join(' · ');
     // message boundary: a rule + bold author line (headings inside answers stay untouched and never look like a new message)
     body.push('---', '', `<a id="msg-${m.id.replace(/[^A-Za-z0-9_-]/g, '')}"></a>**${label}**${meta ? ` · ${meta}` : ''}`, '');
-    const text = m.text.replace(/attachment:([A-Za-z0-9_-]+)/g, (_s, id: string) => (savedFiles[id] ? linkTo(savedFiles[id]) : `#brak-pliku-${id}`));
+    const text = sanitizeMarkdown(m.text).replace(/attachment:([A-Za-z0-9_-]+)/g, (_s, id: string) => (savedFiles[id] ? linkTo(savedFiles[id]) : `#brak-pliku-${id}`));
     body.push(text, '');
     const listed = m.files.filter((f) => !m.text.includes(`attachment:${f.fileId}`));
     if (listed.length) {

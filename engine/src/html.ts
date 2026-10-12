@@ -21,36 +21,54 @@ export function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/** href for a link: http(s), mailto, or a relative path inside the archive; anything else is dropped. */
-function safeHref(u: string): string | null {
+/** A local file of this archive: exactly `attachments/<one file name>` once percent-decoding is applied. */
+const LOCAL_FILE = /^attachments\/[^/\\]+$/;
+
+/**
+ * Target of a link or image from conversation text. Allowed: http(s), mailto, and `attachments/<file>`.
+ * Checked on the DECODED form too: browsers resolve %2e%2e as .. and %5c as \ (a UNC path on a file:// page
+ * is an SMB request that leaks the Windows NTLM hash). Everything else is dropped.
+ */
+export function safeHref(u: string): string | null {
   const url = u.trim().replace(/&amp;/g, '&');
-  // backslashes become UNC paths (\\host\share) on a file:// page: an SMB request that leaks the NTLM hash
-  if (url.includes('\\') || /%5c/i.test(url) || /[\x00-\x1f]/.test(url)) return null;
-  if (/^(https?:|mailto:)/i.test(url)) return url;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) return null;   // javascript:, data:, file:, …
-  if (url.startsWith('/') || url.split(/[?#]/)[0].split('/').some((seg) => seg === '..')) return null;
-  return url;
+  let decoded: string;
+  try { decoded = decodeURIComponent(url); } catch { return null; }
+  for (const v of [url, decoded]) {
+    if (v.includes('\\') || /[\x00-\x1f\x7f]/.test(v)) return null;
+  }
+  if (/^(https?:\/\/|mailto:)/i.test(url)) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(decoded) || decoded.startsWith('/')) return null;   // javascript:, file:, //host, /abs
+  const path = decoded.split(/[?#]/)[0];
+  return LOCAL_FILE.test(path) && !path.split('/').some((s) => s === '..' || s === '.') ? url : null;
 }
 
-/** Inline Markdown on ALREADY ESCAPED text. */
+/**
+ * Inline Markdown on ALREADY ESCAPED text. Every generated tag (code, image, link) is parked in a placeholder
+ * right away, so later passes (autolinks, bold, italic) only ever see plain text — never inside an attribute.
+ */
 function inline(t: string): string {
-  const codes: string[] = [];
-  t = t.replace(/`([^`\n]+)`/g, (_m, c: string) => { codes.push(`<code>${c}</code>`); return `\u0000${codes.length - 1}\u0000`; });
+  const parked: string[] = [];
+  const park = (html: string) => { parked.push(html); return `\u0000${parked.length - 1}\u0000`; };
+  t = t.replace(/\u0000/g, '');
+  t = t.replace(/`([^`\n]+)`/g, (_m, c: string) => park(`<code>${c}</code>`));
   t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, alt: string, src: string) => {
     const h = safeHref(src);
-    // only images stored in this archive's attachments folder (never remote, absolute or UNC paths)
-    if (!h || !/^attachments\/[^/]+$/.test(h) || !IMAGE_EXT.test(decodeURI(h.split(/[?#]/)[0]))) return alt ? `[${alt}]` : '';
-    return `<a class="img" href="${esc(h)}" target="_blank"><img src="${esc(h)}" alt="${alt}" loading="lazy"></a>`;
+    const ok = h && LOCAL_FILE.test(h.split(/[?#]/)[0]) && IMAGE_EXT.test(decodeURIComponent(h.split(/[?#]/)[0]));
+    // alt is escaped text; quotes are already &quot;, nothing else is ever added inside the attribute
+    return ok ? park(`<a class="img" href="${esc(h!)}" target="_blank"><img src="${esc(h!)}" alt="${alt}" loading="lazy"></a>`)
+      : (alt ? `[${alt}]` : '');
   });
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, txt: string, href: string) => {
     const h = safeHref(href);
-    return h ? `<a href="${esc(h)}"${/^https?:/i.test(h) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${txt}</a>` : txt;
+    return h ? park(`<a href="${esc(h)}"${/^https?:/i.test(h) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${txt}</a>`) : txt;
   });
-  t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (_m, pre: string, url: string) =>
-    `${pre}<a href="${esc(url.replace(/&amp;/g, '&'))}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+  t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)\u0000]+)/g, (_m, pre: string, url: string) => {
+    const h = safeHref(url);
+    return h ? `${pre}${park(`<a href="${esc(h)}" target="_blank" rel="noopener noreferrer">${url}</a>`)}` : `${pre}${url}`;
+  });
   t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
   t = t.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
-  return t.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => codes[Number(i)]);
+  return t.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => parked[Number(i)] ?? '');
 }
 
 /** Markdown subset → HTML: fenced code, headings, quotes, lists, tables, rules, paragraphs, reasoning blocks. */
