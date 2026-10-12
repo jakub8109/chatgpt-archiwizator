@@ -1,0 +1,61 @@
+{
+  "name": "chatgpt-archiwizator",
+  "productName": "ChatGPT Archiwizator",
+  "version": "1.0.0",
+  "description": "Archiwizacja rozmów ChatGPT (obszar roboczy Santander) do wybranego folderu na komputerze.",
+  "author": "Jakub Lipiński",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main.cjs",
+  "scripts": {
+    "bundle": "node build.mjs",
+    "start": "npm run bundle && electron .",
+    "dist": "npm run bundle && electron-builder --win portable --x64",
+    "smoke": "npm run bundle && node smoke.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.48.0"
+  },
+  "devDependencies": {
+    "adm-zip": "^0.5.16",
+    "electron": "^38.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0"
+  },
+  "build": {
+    "appId": "pl.lipinski.chatgpt-archiwizator",
+    "productName": "ChatGPT Archiwizator",
+    "copyright": "© 2026 Jakub Lipiński",
+    "artifactName": "ChatGPT-Archiwizator-${version}-portable.exe",
+    "files": [
+      "dist/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/playwright-core/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "renderer/icon.png",
+      "legalTrademarks": "Twórca: Jakub Lipiński"
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    }
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "esbuild@0.24.2": true
+  }
+}

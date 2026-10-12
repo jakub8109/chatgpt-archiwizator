@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
+  <title>ChatGPT Archiwizator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>ChatGPT Archiwizator</h1>
+      <p class="sub">Zapisuje Twoje rozmowy z ChatGPT (obszar roboczy <strong id="ws">Santander</strong>) w wybranym folderze na tym komputerze.</p>
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="status info" role="status" aria-live="polite">Wybierz folder, a potem zaloguj się.</div>
+    <section class="step" id="step-folder">
+      <div class="num">1</div>
+      <div class="body">
+        <h2>Gdzie zapisać rozmowy?</h2>
+        <p class="hint">Wybierz folder, np. w Dokumentach. Aplikacja utworzy w nim podfolder <code>ChatGPT</code> ze stroną <code>index.html</code> do przeglądania rozmów i zdjęć.</p>
+        <div class="row">
+          <button id="btn-folder" class="secondary">Wybierz folder…</button>
+          <span id="folder-path" class="muted">Nie wybrano folderu</span>
+        </div>
+        <p id="folder-note" class="note"></p>
+      </div>
+    </section>
+
+    <section class="step" id="step-login">
+      <div class="num">2</div>
+      <div class="body">
+        <h2>Zaloguj się do ChatGPT</h2>
+        <p class="hint">Otworzy się okno przeglądarki Edge. Zaloguj się kontem firmowym tak jak zwykle — aplikacja nie widzi Twojego hasła. Logowanie wystarczy raz; aplikacja zapamięta sesję na tym komputerze.</p>
+        <div class="row">
+          <button id="btn-login" class="secondary">Zaloguj do ChatGPT</button>
+          <span id="login-state" class="muted">Nie sprawdzono</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" id="step-run">
+      <div class="num">3</div>
+      <div class="body">
+        <h2>Archiwizuj</h2>
+        <p class="hint">Pobierane są tylko nowe i zmienione rozmowy. Pierwsza archiwizacja może potrwać kilka–kilkanaście minut.</p>
+        <div class="row">
+          <button id="btn-start" class="primary" disabled>Rozpocznij archiwizację</button>
+          <button id="btn-cancel" class="danger" hidden>Anuluj</button>
+          <label class="check"><input type="checkbox" id="chk-full"> sprawdź wszystkie rozmowy od nowa</label>
+        </div>
+
+        <div id="progress" hidden>
+          <div class="bar"><div class="fill" id="bar-fill"></div></div>
+          <div class="progress-line">
+            <span id="progress-count">0 / 0</span>
+            <span id="progress-eta" class="muted"></span>
+          </div>
+          <div id="progress-title" class="muted ellipsis"></div>
+        </div>
+      </div>
+    </section>
+
+
+    <section id="result" hidden>
+      <h2 id="result-title">Gotowe</h2>
+      <p id="result-text"></p>
+      <div class="row">
+        <button id="btn-open-index" class="primary">Otwórz archiwum w przeglądarce</button>
+        <button id="btn-open-folder" class="secondary">Otwórz folder z plikami</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Dane zostają tylko na tym komputerze.</span>
+    <span>Twórca: <strong>Jakub Lipiński</strong> · wersja <span id="ver"></span></span>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # attach the .exe to a release when a v* tag is pushed
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Engine — install and test
+        working-directory: engine
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: |
+          npm ci
+          npm test
+
+      - name: App — install
+        working-directory: app
+        run: npm ci
+
+      - name: App — smoke test (window, bridge, CSP)
+        working-directory: app
+        run: npm run smoke
+
+      - name: App — build portable .exe
+        working-directory: app
+        run: npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChatGPT-Archiwizator-portable
+          path: app/release/*.exe
+          if-no-files-found: error
+
+      - name: Release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/release/*.exe

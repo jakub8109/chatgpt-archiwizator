@@ -1,0 +1,35 @@
+{
+  "name": "@jarvis/plugin-chatgpt-importer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JARVIS plugin: ChatGPT conversations -> Knowledge/ChatGPT",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "jarvis-chatgpt-importer": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "login": "node dist/cli.js login",
+    "sync": "node dist/cli.js sync"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./dist/cli.js"
+  }
+}
