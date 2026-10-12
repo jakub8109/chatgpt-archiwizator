@@ -3,36 +3,38 @@ import type { NormalizedConversation } from './types.js';
 
 const REASONING = new Set(['<details><summary>reasoning</summary>', '</details>']);   // our own markers (normalize.ts)
 
-/**
- * Conversation text is untrusted, and Markdown viewers (VS Code preview, Obsidian) render images and raw HTML.
- * Outside code blocks/spans: raw HTML is escaped, and link/image targets (inline and reference-style) must pass
- * safeHref; images only from this archive. Our own `attachment:<id>` placeholders are kept for later resolution.
- */
-export function sanitizeMarkdown(text: string): string {
-  const out: string[] = [];
-  let inFence: string | null = null;
-  for (const line of text.split('\n')) {
-    const fence = /^\s*(```+|~~~+)/.exec(line);
-    if (inFence) { out.push(line); if (fence && line.trim().startsWith(inFence)) inFence = null; continue; }
-    if (fence) { inFence = fence[1]; out.push(line); continue; }
-    if (REASONING.has(line.trim())) { out.push(line); continue; }
-    // reference-style definitions: [id]: target
-    const def = /^(\s*\[[^\]]+\]:\s*)(\S+)(.*)$/.exec(line);
-    if (def) { out.push(safeHref(def[2]) ? line : `${def[1].replace('[', '\\[')}(usunięto niebezpieczny adres)`); continue; }
-    // split off inline code spans so they stay verbatim
-    out.push(line.split(/(`[^`]*`)/).map((seg, i) => (i % 2 ? seg : cleanSegment(seg))).join(''));
-  }
-  return out.join('\n');
+/** A link/image destination from conversation text is acceptable in a .md file. */
+function targetOk(raw: string): boolean {
+  const t = raw.trim().replace(/^<|>$/g, '');
+  if (/^attachment:[A-Za-z0-9_-]+$/.test(t)) return true;                  // ours, resolved in toMarkdown
+  // Markdown decodes entity references in destinations (&#92; is a backslash): refuse them outright
+  if (/&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);?/i.test(t)) return false;
+  return safeHref(t) !== null;
 }
 
-function cleanSegment(seg: string): string {
-  seg = seg.replace(/</g, '&lt;');
-  return seg.replace(/(!?)\[([^\]]*)\]\(([^)\s]*)([^)]*)\)/g, (all, bang: string, label: string, target: string) => {
-    if (/^attachment:[A-Za-z0-9_-]+$/.test(target)) return all;                        // ours, resolved below
-    const h = safeHref(target);
-    if (bang) return h && !/^(https?:|mailto:)/i.test(h) ? `![${label}](${h})` : `[obraz: ${label || 'bez opisu'}]`;
-    return h ? `[${label}](${h})` : `${label} (usunięto niebezpieczny link)`;
-  });
+const ZWSP = '​';
+
+/**
+ * Conversation text is untrusted, and Markdown viewers (VS Code preview, Obsidian) render raw HTML, images and
+ * links. Instead of re-implementing a Markdown parser (any difference in how code spans/fences are detected can be
+ * abused), three rules apply to the WHOLE text, code included:
+ *  1. every `<` that could start a tag or an autolink gets a zero-width space after it, so no viewer sees HTML;
+ *  2. every destination after `](` and every reference definition must pass targetOk, else it is replaced;
+ *  3. images may only come from this archive (no remote images).
+ * Inside code this can change a dangerous-looking snippet slightly; it never changes how normal code reads.
+ */
+export function sanitizeMarkdown(text: string): string {
+  return text.split('\n').map((line) => {
+    if (REASONING.has(line.trim())) return line;
+    // reference-style definitions:  [id]: <target> "title"
+    const def = /^(\s*\[[^\]\n]+\]:\s*)(<[^>\n]*>|\S+)(.*)$/.exec(line);
+    if (def && !targetOk(def[2])) line = `${def[1].replace('[', '\\[')}#usunieto-niebezpieczny-adres`;
+    // every inline destination, whatever the label looks like (nested brackets included)
+    line = line.replace(/\]\(\s*(<[^>\n]*>|[^)\s]*)/g, (all, t: string) => (targetOk(t) ? all : '](#usunieto-niebezpieczny-adres'));
+    // images: only from the archive
+    line = line.replace(/(!\[[^\n]*?\]\(\s*<?)(https?:|mailto:)/gi, '$1#zdalny-obraz-usuniety-');
+    return line.replace(/<(?=[A-Za-z!/?])/g, `<${ZWSP}`);
+  }).join('\n');
 }
 
 /** Link target safe for Markdown: encodeURI keeps ( ) which would end the link early. */

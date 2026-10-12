@@ -44,18 +44,32 @@ describe('HTML pages', () => {
 });
 
 describe('Markdown files (VS Code preview, Obsidian)', () => {
-  it('escape raw HTML and drop unsafe targets outside code, keep code and our markers', () => {
-    const md = sanitizeMarkdown([
-      `<img src="${UNC}"> tekst`, `![x](${UNC})`, '[k](file://evil/x)', `[ref]: ${UNC}`, '![r](https://evil.example/t.png)',
-      '![ok](attachment:file_1)', '[dobry](https://example.com)', '`<b>kod</b>`',
-      '```html', '<script>zostaje w bloku kodu</script>', '```', '<details><summary>reasoning</summary>', '</details>',
-    ].join('\n'));
-    expect(md).not.toMatch(/^<img|\]\(\\\\|\]\(file:|^\[ref\]: \\\\|!\[r\]\(https:/m);
-    expect(md).toContain('&lt;img');
+  const RAW_TAG = /<[A-Za-z!/?]/;   // what a viewer would treat as raw HTML or an autolink
+
+  it('no raw HTML anywhere and no unsafe destinations, whatever the code-span/fence trickery', () => {
+    const cases = [
+      `<img src="${UNC}"> tekst`,
+      '``x` <img src=x onerror=alert(1)>``',                    // double-backtick span my old splitter misread
+      '```js`\n<img src=x onerror=alert(1)>\n```',                // backtick in info string: not a fence for CommonMark
+      '    <img src=x>',                                           // indented code
+      `![x](${UNC})`, '[k](file://evil/x)', `[ref]: ${UNC}`, `[ref2]: <${UNC}>`,
+      '![a [b]](//evil/x.png)', '[x](&#92;&#92;evil&#92;a.png)', '[x](&#x5c;&#x5c;evil)', '[x](<//evil/a.png>)',
+      '![r](https://evil.example/t.png)',
+    ];
+    for (const c of cases) {
+      const md = sanitizeMarkdown(c);
+      expect(md, c).not.toMatch(RAW_TAG);
+      expect(md, c).not.toMatch(/\]\(\s*<?(\\|\/\/|file:|&#|https:\/\/evil)/i);
+      expect(md, c).not.toMatch(/^\s*\[ref2?\]:\s*<?\\\\/m);
+    }
+  });
+
+  it('keeps normal content and our own markers usable', () => {
+    const md = sanitizeMarkdown(['![ok](attachment:file_1)', '[dobry](https://example.com/a?b=1)', 'if (a < b && c > d) return;',
+      '<details><summary>reasoning</summary>', '</details>'].join('\n'));
     expect(md).toContain('![ok](attachment:file_1)');
-    expect(md).toContain('[dobry](https://example.com)');
-    expect(md).toContain('`<b>kod</b>`');
-    expect(md).toContain('<script>zostaje w bloku kodu</script>');
+    expect(md).toContain('[dobry](https://example.com/a?b=1)');
+    expect(md).toContain('if (a < b && c > d) return;');   // "< " is not a tag start: untouched
     expect(md).toContain('<details><summary>reasoning</summary>');
   });
 });
