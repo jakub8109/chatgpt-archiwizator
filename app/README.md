@@ -53,7 +53,7 @@ Pliki `.md` najwygodniej czytać w VS Code (podgląd: Ctrl+Shift+V), w Obsidian 
 ## Budowanie
 
 ```powershell
-cd engine; npm ci; cd ..pp
+cd engine; npm ci; cd ..\app
 npm ci
 npm run dist        # release\ChatGPT-Archiwizator-<wersja>-portable.exe
 npm run smoke       # test okna (bez logowania)
